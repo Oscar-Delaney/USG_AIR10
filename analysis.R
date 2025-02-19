@@ -316,6 +316,76 @@ data_samples_grouped_summary %>%
   )
 dev.off()
 
+# Create labels (using HDI)
+metalog_summary_labels_hdi <-
+  data_samples_grouped_summary %>%
+  mutate(label = glue::glue("**{nice_num(median, 0, FALSE)}%** [{nice_num(hdi_05, 1, FALSE)}; {nice_num(hdi_95, 1, FALSE)}]")) %>%
+  select(question, type, label)
+
+data_samples_grouped_summary_hdi <-
+  data_samples_grouped_summary %>%
+  left_join(metalog_summary_labels_hdi, by = c("question", "type"))
+
+
+j_png("iaps - metalog plot example v3",
+      height = 5)
+
+data_samples_grouped_summary_hdi %>%
+  ggplot(aes(x = median, y = question, color = type)) +
+  scale_x_continuous(limits = c(0, 152.5), breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), expand = expansion(add = c(1, 1))) +
+  geom_errorbarh(aes(xmin = hdi_05, xmax = hdi_95), position = position_dodge(.8), height =.25) +  # Use hdi_05 and hdi_95
+  geom_point(position = position_dodge(.8)) +
+  geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth =.1) +
+  geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), fill = NA, text.color = "black", color = NA, position = position_dodge(.8), size = 2.4, family = "Jost", show.legend = FALSE) +
+  scale_alpha_manual(values = c(1, 1)) +
+  scale_color_manual(values = my_colors) +
+  guides(color = guide_legend(reverse = TRUE)) +
+  labs(
+    x = "",
+    y = "",
+    title = "Estimates from Metalog Distributions (HDI)",  # Updated title
+    color = "Respondent type:"
+  ) +
+  theme(
+    legend.position = "top"
+  )
+dev.off()
+
+# Create labels (using quantiles)
+metalog_summary_labels_quant <-
+  data_samples_grouped_summary %>%
+  mutate(label = glue::glue("**{nice_num(median, 0, FALSE)}%** [{nice_num(quant_05, 1, FALSE)}; {nice_num(quant_95, 1, FALSE)}]")) %>%
+  select(question, type, label)
+
+data_samples_grouped_summary_quant <-
+  data_samples_grouped_summary %>%
+  left_join(metalog_summary_labels_quant, by = c("question", "type"))
+
+
+j_png("iaps - metalog plot example v4",
+      height = 5)
+
+data_samples_grouped_summary_quant %>%
+  ggplot(aes(x = median, y = question, color = type)) +
+  scale_x_continuous(limits = c(0, 152.5), breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), expand = expansion(add = c(1,1))) +
+  geom_errorbarh(aes(xmin = quant_05, xmax = quant_95), position = position_dodge(.8), height =.25) +  # Use quant_05 and quant_95
+  geom_point(position = position_dodge(.8)) +
+  geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth =.1) +
+  geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), fill = NA, text.color = "black", color = NA, position = position_dodge(.8), size = 2.4, family = "Jost", show.legend = FALSE) +  # Use label (quantiles)
+  scale_alpha_manual(values = c(1, 1)) +
+  scale_color_manual(values = my_colors) +
+  guides(color = guide_legend(reverse = TRUE)) +
+  labs(
+    x = "",
+    y = "",
+    title = "Estimates from Metalog Distributions (Quantiles)",  # Updated title
+    color = "Respondent type:"
+  ) +
+  theme(
+    legend.position = "top"
+  )
+dev.off()
+
 #### beta regression modelling ####
 # I've added an interaction between question and respondent type for the mean,
 # but not for the phi parameter: there just isn't really enough data to get any
