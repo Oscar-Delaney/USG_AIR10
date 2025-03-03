@@ -73,15 +73,12 @@ my_colors <-
   c("expert" = teal,
     "forecaster" = fire_red)
 
-# it might make sense to add a little order to the plot presentation
-# by arranging people according to their average rating across questions -
-# the plot will look a bit nicer but also be a but easier to read most likely
+# arrange participants by their overall estimate
 my_order <-
   data %>% 
-  group_by(usercode) %>% 
-  summarise(mean = mean(main)) %>% 
-  arrange(mean) %>% 
-  pull(usercode)
+  filter(question == "Overall") %>%  # Only look at the Overall question
+  arrange(type, main) %>%            # Sort first by type, then by main estimate
+  pull(usercode)                     # Extract just the usercode column
 
 data <-
   data %>% 
@@ -95,6 +92,7 @@ j_png("iaps - raw estimates plot example",
 data %>% 
   ggplot(aes(x = main, y = usercode, color = type)) +
   scale_x_continuous(limits = c(0, 100), expand = expansion(add = c(1, 1))) +
+  scale_y_discrete(limits = rev) +
   geom_errorbarh(aes(xmin = low, xmax = high), linewidth = .33, height = .5) +
   geom_point(shape = 16, fill = "white", size = 1.5) +
   scale_color_manual(values = my_colors) +
@@ -116,6 +114,7 @@ j_png("iaps - raw estimates plot example flipped",
 data %>% 
   ggplot(aes(x = main, y = question, color = type)) +
   scale_x_continuous(limits = c(0, 100), expand = expansion(add = c(1, 1))) +
+  scale_y_discrete(limits = rev) +
   geom_errorbarh(aes(xmin = low, xmax = high), linewidth = .33, height = .5) +
   geom_point(shape = 16, fill = "white", size = 1.5) +
   scale_color_manual(values = my_colors) +
