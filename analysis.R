@@ -46,6 +46,21 @@ data <- data %>%
   mutate(question = recode(question, !!!question_names)) %>%
   mutate(question = factor(question, levels = question_order))
 
+# Calculate the expected sum for each participant
+participant_checks <- data %>%
+  # For each usercode, calculate what "Overall" should approximately equal
+  group_by(usercode, type) %>%
+  summarize(
+    overall_estimate = main[question == "Overall"],
+    sum_of_components = sum(main[question %in% c("Consortium", "Government lab", "Nationalization", 
+                                                 "Private contractor", "Legal compulsion")]),
+    difference = overall_estimate - sum_of_components,
+    percent_difference = (difference / overall_estimate) * 100,
+    .groups = "drop"
+  ) %>%
+  # Sort by the absolute percentage difference to see who was closest
+  arrange(abs(percent_difference))
+
 #### basic plot ####
 # you can put totally custom colors in here
 # e.g., from https://htmlcolorcodes.com/
