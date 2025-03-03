@@ -27,6 +27,25 @@ data <-
   data %>% 
   mutate(beta_main = transform_beta(main, sample_size = nrow(data)))
 
+# Create a mapping of question codes to descriptive names
+question_names <- c(
+  "q0" = "Overall",
+  "q1" = "Consortium", 
+  "q2" = "Government lab",
+  "q3" = "Nationalization",
+  "q4" = "Private contractor",
+  "q5" = "Legal compulsion",
+  "q6" = "Military"
+)
+
+# Create a vector to specify the desired factor level order
+question_order <- question_names[paste0("q", 0:6)]
+
+# Apply the mapping and set as factor with specified order
+data <- data %>%
+  mutate(question = recode(question, !!!question_names)) %>%
+  mutate(question = factor(question, levels = question_order))
+
 #### basic plot ####
 # you can put totally custom colors in here
 # e.g., from https://htmlcolorcodes.com/
@@ -333,6 +352,7 @@ j_png("iaps - metalog plot example v3",
 data_samples_grouped_summary_hdi %>%
   ggplot(aes(x = median, y = question, color = type)) +
   scale_x_continuous(limits = c(0, 152.5), breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), expand = expansion(add = c(1, 1))) +
+  scale_y_discrete(limits = rev) +
   geom_errorbarh(aes(xmin = hdi_05, xmax = hdi_95), position = position_dodge(.8), height =.25) +  # Use hdi_05 and hdi_95
   geom_point(position = position_dodge(.8)) +
   geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth =.1) +
@@ -368,6 +388,7 @@ j_png("iaps - metalog plot example v4",
 data_samples_grouped_summary_quant %>%
   ggplot(aes(x = median, y = question, color = type)) +
   scale_x_continuous(limits = c(0, 152.5), breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), expand = expansion(add = c(1,1))) +
+  scale_y_discrete(limits = rev) +
   geom_errorbarh(aes(xmin = quant_05, xmax = quant_95), position = position_dodge(.8), height =.25) +  # Use quant_05 and quant_95
   geom_point(position = position_dodge(.8)) +
   geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth =.1) +
@@ -429,7 +450,7 @@ beta_fit_1_prior_check <-
       )
 
 # yep, it comes out quite flat, tapering off at the extremes as we'd expect:
-add_epred_draws(newdata = tibble(question = "q0",
+add_epred_draws(newdata = tibble(question = "Overall",
                                  type = "expert",
                                  usercode = "babbage"),
                 object = beta_fit_1_prior_check) %>% 
@@ -457,7 +478,7 @@ beta_fit_1 <-
 
 ##### extract key info for plotting #####
 beta_epred_1 <-
-  add_epred_draws(newdata = crossing(question = c("q0", "q1", "q2", "q3", "q4", "q5", "q6"),
+  add_epred_draws(newdata = crossing(question = question_order,
                                      type = c("expert", "forecaster")),
                   re_formula = NA,
                   object = beta_fit_1,
@@ -475,13 +496,15 @@ beta_phi_parameters <-
   pivot_longer(cols = contains("phi"),
                names_to = "question",
                values_to = "log_phi") %>% 
-  mutate(question = case_when(str_detect(question, "q0") ~ "q0",
-                              str_detect(question, "q1") ~ "q1",
-                              str_detect(question, "q2") ~ "q2",
-                              str_detect(question, "q3") ~ "q3",
-                              str_detect(question, "q4") ~ "q4",
-                              str_detect(question, "q5") ~ "q5",
-                              str_detect(question, "q6") ~ "q6"),
+  mutate(question = case_when(
+                  str_detect(question, "Overall") ~ "Overall",
+                  str_detect(question, "Consortium") ~ "Consortium",
+                  str_detect(question, "Governmentlab") ~ "Government lab",
+                  str_detect(question, "Nationalization") ~ "Nationalization",
+                  str_detect(question, "Privatecontractor") ~ "Private contractor",
+                  str_detect(question, "Legalcompulsion") ~ "Legal compulsion",
+                  str_detect(question, "Military") ~ "Military"),
+         # Make sure question is a factor with correct levels
          phi = exp(log_phi)
          )
 
@@ -490,7 +513,8 @@ beta_epred_1 <-
   left_join(
     beta_phi_parameters,
     by = c("question", "draw")
-  )
+  ) %>%
+  mutate(question = factor(question, levels = question_order))
 
 beta_summary_1 <-
   beta_epred_1 %>% 
@@ -540,6 +564,7 @@ beta_summary_1 %>%
   filter(parameter == "probability") %>% 
   ggplot(aes(x = median * 100, y = question, color = type)) +
   scale_x_continuous(limits = c(0, 152.5), breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), expand = expansion(add = 0)) +
+  scale_y_discrete(limits = rev) +
   geom_errorbarh(aes(xmin = lower_quant_90 * 100, xmax = upper_quant_90 * 100), position = position_dodge(.8), height = .25) +
   geom_point(position = position_dodge(.8)) +
   geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth = .1) +
