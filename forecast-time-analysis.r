@@ -121,6 +121,34 @@ checkpoints_filled <- checkpoints_complete %>%
 # Replace checkpoints with this filled version for the analysis
 checkpoints <- checkpoints_filled
 
+# Calculate the change in forecasts between the Initial and Ref Classes phases
+checkpoint_changes <- checkpoints %>%
+  filter(checkpoint %in% c("Initial", "Ref Classes")) %>%
+  select(usercode, question, checkpoint, main) %>%
+  pivot_wider(names_from = checkpoint, values_from = main, names_prefix = "main_") %>%
+  rename(main_Ref_Classes = `main_Ref Classes`) %>%
+  mutate(change = case_when(
+    main_Ref_Classes > main_Initial ~ "Up",
+    main_Ref_Classes < main_Initial ~ "Down",
+    TRUE ~ "Same"
+  )) %>%
+  count(question, change) %>%
+  pivot_wider(names_from = change, values_from = n, values_fill = 0)
+
+# Calculate the change in forecasts between the Ref Classes and Final phases
+checkpoint_changes2 <- checkpoints %>%
+  filter(checkpoint %in% c("Ref Classes", "Final")) %>%
+  select(usercode, question, checkpoint, main) %>%
+  pivot_wider(names_from = checkpoint, values_from = main, names_prefix = "main_") %>%
+  rename(main_Ref_Classes = `main_Ref Classes`) %>%
+  mutate(change = case_when(
+    main_Ref_Classes < main_Final ~ "Up",
+    main_Ref_Classes > main_Final ~ "Down",
+    TRUE ~ "Same"
+  )) %>%
+  count(question, change) %>%
+  pivot_wider(names_from = change, values_from = n, values_fill = 0)
+
 # ==================== VISUALIZATIONS ====================
 # 1. Distribution of when participants made updates
 j_png("update_time_distribution",
