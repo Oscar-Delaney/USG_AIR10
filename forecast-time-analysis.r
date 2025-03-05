@@ -214,6 +214,61 @@ checkpoints %>%
   )
 dev.off()
 
+# 4. Initial vs final forecast
+
+# Reshape data to have initial and final forecasts in separate columns
+forecast_comparison <- checkpoints %>%
+  filter(question != "Military") %>%
+  select(usercode, question, checkpoint, main, type) %>%
+  filter(checkpoint %in% c("Initial", "Final")) %>%
+  pivot_wider(names_from = checkpoint, values_from = main) %>%
+  # Remove rows with missing values
+  filter(!is.na(Initial), !is.na(Final))
+
+# Calculate correlation coefficients for each question
+correlations <- forecast_comparison %>%
+  group_by(question) %>%
+  summarize(
+    r = cor(Initial, Final, use = "complete.obs"),
+    r_squared = r^2,
+    .groups = "drop"
+  )
+
+# Create correlation label for each question
+question_labels <- correlations %>%
+  mutate(label = sprintf("R² = %.2f", r_squared))
+
+j_png("initial_final_forecasts",
+      height = 5)
+ggplot(forecast_comparison, aes(x = Initial, y = Final)) +
+  # Add reference line (y = x)
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray70") +
+  # Add points colored by type
+  geom_point(aes(color = type), size = 1.5, alpha = 0.7) +
+  # Add correlation text
+  geom_text(data = question_labels, 
+            aes(x = Inf, y = -Inf, label = label),
+            hjust = 1.1, vjust = -0.5, size = 3) +
+  # Facet by question - REMOVE the free scales option
+  facet_wrap(~question, scales = "free") +
+  scale_color_manual(values = my_colors) +
+  # Customize scales and theme
+  labs(
+    title = "Initial vs Final Forecasts",
+    x = "Initial forecast",
+    y = "Final forecast",
+    color = "Respondent type"
+  )
+dev.off()
+
+# Calculate a regression model for all questions combined
+overall_model <- forecast_comparison %>%
+  # Fit linear model
+  lm(Final ~ Initial, data = .)
+
+# Print model summary
+summary(overall_model)
+
 # 5. Tracking estimates over time for selected questions
 
 # Add vertical lines for the phase transitions
