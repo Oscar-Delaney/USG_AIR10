@@ -400,6 +400,7 @@ j_png("iaps - metalog plot example v4",
       height = 5)
 
 data_samples_grouped_summary_quant %>%
+  filter(question != "Military") %>%  # Remove Military question
   ggplot(aes(x = median, y = question, color = type)) +
   scale_x_continuous(limits = c(0, 152.5), breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), expand = expansion(add = c(1,1))) +
   scale_y_discrete(limits = rev) +
@@ -414,7 +415,7 @@ data_samples_grouped_summary_quant %>%
     x = "",
     y = "",
     title = "Estimates from Metalog Distributions (Quantiles)",  # Updated title
-    color = "Respondent type:"
+    color = "Respondent type"
   ) +
   theme(
     legend.position = "top"
