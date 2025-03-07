@@ -8,9 +8,23 @@ library(rmetalog)
 library(ggtext)
 library(extraDistr)
 
+# set the theme and colors
 theme_set(theme_jimbilben(10))
 set_colors()
 
+# you can put totally custom colors in here
+# e.g., from https://htmlcolorcodes.com/
+# or you can use some of my presets from set_colors()
+my_fills <-
+  c("expert" = teal,
+    "forecaster" = fire_red)
+
+my_colors <-
+  c("all" = "black",
+    "expert" = teal,
+    "forecaster" = fire_red)
+
+# Load and process the data
 data <-
   read_csv("data/main_data.csv")
 
@@ -37,6 +51,18 @@ data <- data %>%
   mutate(question = recode(question, !!!question_names)) %>%
   mutate(question = factor(question, levels = question_order))
 
+# arrange participants by their overall estimate
+my_order <-
+  data %>% 
+  filter(question == "Overall") %>%  # Only look at the Overall question
+  arrange(type, main) %>%            # Sort first by type, then by main estimate
+  pull(usercode)                     # Extract just the usercode column
+
+data <-
+  data %>% 
+  mutate(usercode = factor(usercode,
+                           levels = my_order))
+
 # Calculate the expected sum for each participant
 participant_checks <- data %>%
   # For each usercode, calculate what "Overall" should approximately equal
@@ -52,34 +78,9 @@ participant_checks <- data %>%
   # Sort by the absolute percentage difference to see who was closest
   arrange(abs(percent_difference))
 
-#### basic plot ####
-# you can put totally custom colors in here
-# e.g., from https://htmlcolorcodes.com/
-# or you can use some of my presets from set_colors()
-my_fills <-
-  c("expert" = teal,
-    "forecaster" = fire_red)
-
-my_colors <-
-  c("all" = "black",
-    "expert" = teal,
-    "forecaster" = fire_red)
-
-# arrange participants by their overall estimate
-my_order <-
-  data %>% 
-  filter(question == "Overall") %>%  # Only look at the Overall question
-  arrange(type, main) %>%            # Sort first by type, then by main estimate
-  pull(usercode)                     # Extract just the usercode column
-
-data <-
-  data %>% 
-  mutate(usercode = factor(usercode,
-                           levels = my_order))
-
 # !!! NOTE - if you only want to look at the plot directly, don't run j_png, just run the plot part 
 # j_png is for actually making a png image that will save for you in the png folder
-j_png("iaps - raw estimates plot example",
+j_png("raw data by question",
       height = 7.5)
 data %>% 
   ggplot(aes(x = main, y = usercode, color = type)) +
@@ -93,7 +94,7 @@ data %>%
     title = "Raw estimates for probabilities of each outcome",
     x = "Estimated probability and 90% range",
     y = "",
-    color = "Respondent type:"
+    color = "Respondent type"
   ) +
   theme(
     legend.position = "top"
@@ -101,7 +102,7 @@ data %>%
 dev.off()
 
 # you can also organise it by rater:
-j_png("iaps - raw estimates plot example flipped",
+j_png("raw data by user",
       height = 7.5)
 data %>% 
   ggplot(aes(x = main, y = question, color = type)) +
@@ -115,7 +116,7 @@ data %>%
     title = "Raw estimates for probabilities of each outcome",
     x = "Estimated probability and 90% range",
     y = "",
-    color = "Respondent type:"
+    color = "Respondent type"
   ) +
   theme(
     legend.position = "top",
@@ -195,7 +196,7 @@ data_samples_combined_summary <- bind_rows(
     mutate(type = "all")
 )
 
-j_png("iaps - metalog plot example no breakdown v2",
+j_png("metalog distributions",
       height = 7.5)
 data_samples %>% 
   ggplot(aes(x = value)) +
@@ -223,7 +224,7 @@ data_samples %>%
   )
 dev.off()
 
-j_png("iaps - metalog plot example v2",
+j_png("metalog distributions by type",
       height = 7.5)
 data_samples_grouped_summary %>% 
   ggplot(aes(x = median, color = type)) +
@@ -249,7 +250,7 @@ data_samples_grouped_summary %>%
   labs(
     title = "Pooled probabilities based on metalog distributions for each respondent's estimate",
     x = "Estimated probability",
-    fill = "Respondent type:",
+    fill = "Respondent type",
     y = ""
   ) +
   theme(
@@ -270,7 +271,7 @@ data_samples_combined_summary_quant <-
   mutate(type = factor(type, levels = c("forecaster", "expert", "all")))
 
 
-j_png("iaps - metalog plot example v4",
+j_png("metalog summary plot",
       height = 5)
 
 data_samples_combined_summary_quant %>%
@@ -288,7 +289,7 @@ data_samples_combined_summary_quant %>%
   labs(
     x = "",
     y = "",
-    title = "Estimates from Metalog Distributions (Quantiles)",  # Updated title
+    title = "Metalog distributions group estimates",
     color = "Respondent type"
   ) +
   theme(
@@ -412,7 +413,7 @@ beta_summary_1 <-
     by = c("question", "type")
   )
   
-j_png("iaps - beta regression example",
+j_png("beta regression summary plot",
       height = 5)
 beta_summary_1 %>%
   filter(parameter == "probability") %>% 
@@ -430,7 +431,7 @@ beta_summary_1 %>%
     x = "",
     y = "",
     title = "Estimates from beta regression model",
-    color = "Respondent type:"
+    color = "Respondent type"
   ) +
   theme(
     legend.position = "top"
