@@ -248,45 +248,55 @@ dev.off()
 forecast_comparison <- checkpoints %>%
   filter(question != "Military") %>%
   select(usercode, question, checkpoint, main, type) %>%
-  filter(checkpoint %in% c("Initial", "Final")) %>%
-  pivot_wider(names_from = checkpoint, values_from = main) %>%
-  # Remove rows with missing values
-  filter(!is.na(Initial), !is.na(Final))
+  pivot_wider(names_from = checkpoint, values_from = main)
 
-# Calculate correlation coefficients for each question
-correlations <- forecast_comparison %>%
-  group_by(question) %>%
-  summarize(
-    r = cor(Initial, Final, use = "complete.obs"),
-    r_squared = r^2,
-    .groups = "drop"
-  )
+make_corr_plot <- function(forecast_comparison, x, y) {
+  # Calculate correlation coefficients for each question
+  correlations <- forecast_comparison %>%
+    group_by(question) %>%
+    summarize(
+      r = cor(!!sym(x), !!sym(y), use = "complete.obs"),
+      r_squared = r^2,
+      .groups = "drop"
+    )
+  
+  # Create correlation label for each question
+  question_labels <- correlations %>%
+    mutate(label = sprintf("R² = %.2f", r_squared))
 
-# Create correlation label for each question
-question_labels <- correlations %>%
-  mutate(label = sprintf("R² = %.2f", r_squared))
+  # Create a scatter plot with correlation text
+  ggplot(forecast_comparison, aes(x = !!sym(x), y = !!sym(y))) +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray70") +
+    geom_point(aes(color = type), size = 1.5, alpha = 0.7) +
+    geom_text(data = question_labels, 
+              aes(x = Inf, y = -Inf, label = label),
+              hjust = 1.1, vjust = -0.5, size = 3) +
+    scale_color_manual(values = my_colors) +
+    # Facet by question - REMOVE the free scales option
+    facet_wrap(~question, scales = "free") +
+    labs(
+      # extract title and labels from x and y
+      title = "Correlations between stages",
+      x = paste0(x," forecast"),
+      y = paste0(y," forecast"),
+      color = "Respondent type"
+    )
+}
 
+# Create the three figures
 j_png("initial_final_forecasts",
       height = 5)
-ggplot(forecast_comparison, aes(x = Initial, y = Final)) +
-  # Add reference line (y = x)
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray70") +
-  # Add points colored by type
-  geom_point(aes(color = type), size = 1.5, alpha = 0.7) +
-  # Add correlation text
-  geom_text(data = question_labels, 
-            aes(x = Inf, y = -Inf, label = label),
-            hjust = 1.1, vjust = -0.5, size = 3) +
-  # Facet by question - REMOVE the free scales option
-  facet_wrap(~question, scales = "free") +
-  scale_color_manual(values = my_colors) +
-  # Customize scales and theme
-  labs(
-    title = "Initial vs Final Forecasts",
-    x = "Initial forecast",
-    y = "Final forecast",
-    color = "Respondent type"
-  )
+make_corr_plot(forecast_comparison, "Initial", "Final")
+dev.off()
+
+j_png("initial_ref_classes_forecasts",
+      height = 5)
+make_corr_plot(forecast_comparison, "Initial", "Ref Classes")
+dev.off()
+
+j_png("ref_classes_final_forecasts",
+      height = 5)
+make_corr_plot(forecast_comparison, "Ref Classes", "Final")
 dev.off()
 
 # Calculate a regression model for all questions combined
