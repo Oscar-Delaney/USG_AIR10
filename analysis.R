@@ -14,15 +14,6 @@ set_colors()
 data <-
   read_csv("data/main_data.csv")
 
-data %>% 
-  ggplot(aes(x = main)) +
-  geom_histogram()
-
-data %>% 
-  ggplot(aes(x = main)) +
-  geom_histogram() +
-  facet_wrap(~question)
-
 data <-
   data %>% 
   mutate(beta_main = transform_beta(main, sample_size = nrow(data)))
@@ -133,40 +124,6 @@ data %>%
 dev.off()
 
 #### metalog it ####
-# test for 1 response
-values <- c(15, 45, 85)
-quantiles <- c(.05, .5, .95)
-
-# you first have to make a metalog object (for some reason...!)
-my_metalog <-
-  metalog(x = values,
-          probs = quantiles,
-          term_limit = 3,
-          boundedness = "b",
-          bounds = c(0, 100))
-
-# you can then pass this object to the function that will produce
-# samples from the computed distribution:
-# e.g., 25 samples:
-rmetalog(my_metalog,
-         n = 25,
-         term = 3)
-
-# quick check of the quantiles - it seems like a decent match
-quantile(rmetalog(my_metalog,
-                  n = 100000,
-                  term = 3), .05)
-quantile(rmetalog(my_metalog,
-                  n = 100000,
-                  term = 3), .5)
-quantile(rmetalog(my_metalog,
-                  n = 100000,
-                  term = 3), .95)
-
-##### programatically make the distributions #####
-# what I'm going to do is try to make a function that'll compute 
-# the appropriate metalog for each respondent/question and draw, say
-# 25k samples from it for each response
 make_metalog <- function(input_tibble, n_samples = 25000) {
   
   metalog_object <-
@@ -208,57 +165,6 @@ data_samples <-
   map_df(.f = make_metalog,
          n_samples = 25000)
 
-j_png("iaps - metalog plot example",
-      height = 7.5)
-data_samples %>% 
-  ggplot(aes(x = value)) +
-  scale_x_continuous(limits = c(0, 100), expand = expansion(add = c(1, 1))) +
-  geom_histogram(aes(fill = type),
-                 breaks = seq(min(0),
-                              max(100),
-                              length.out = 49 + 1),
-                 linewidth = .25,
-                 alpha = .5,
-                 position = position_identity(),
-                 color = NA) +
-  scale_fill_manual(values = my_fills) +
-  facet_wrap(~question, ncol = 2, scales = "free_y") +
-  labs(
-    title = "Pooled probabilities based on metalog distributions for each respondent's estimate",
-    x = "Estimated probability",
-    fill = "Respondent type:",
-    y = ""
-  ) +
-  theme(
-    axis.text.y = element_blank(),
-    legend.position = "top"
-  )
-dev.off()
-
-j_png("iaps - metalog plot example no breakdown",
-      height = 7.5)
-data_samples %>% 
-  ggplot(aes(x = value)) +
-  scale_x_continuous(limits = c(0, 100), expand = expansion(add = c(1, 1))) +
-  geom_histogram(breaks = seq(min(0),
-                              max(100),
-                              length.out = 49 + 1),
-                 linewidth = .25,
-                 alpha = .5,
-                 position = position_identity(),
-                 color = NA,
-                 fill = sky_blue) +
-  facet_wrap(~question, ncol = 2, scales = "free_y") +
-  labs(
-    title = "Pooled probabilities based on metalog distributions for each respondent's estimate",
-    x = "Estimated probability",
-    y = ""
-  ) +
-  theme(
-    axis.text.y = element_blank()
-  )
-dev.off()
-
 ##### get summary information from distributions #####
 # we can now just describe/summarise the resultant pooled distributions
 data_samples_grouped_summary <-
@@ -270,8 +176,6 @@ data_samples_grouped_summary <-
     highest_point = hdp(value),
     quant_05 = quantile(value, .05),
     quant_95 = quantile(value, .95),
-    hdi_05 = hdi(value, .90)[1],
-    hdi_95 = hdi(value, .90)[2]
   )
 
 data_samples_summary <-
@@ -283,8 +187,6 @@ data_samples_summary <-
     highest_point = hdp(value),
     quant_05 = quantile(value, .05),
     quant_95 = quantile(value, .95),
-    hdi_05 = hdi(value, .90)[1],
-    hdi_95 = hdi(value, .90)[2]
   )
 
 data_samples_combined_summary <- bind_rows(
@@ -356,42 +258,6 @@ data_samples_grouped_summary %>%
   )
 dev.off()
 
-# Create labels (using HDI)
-metalog_summary_labels_hdi <-
-  data_samples_grouped_summary %>%
-  mutate(label = glue::glue("**{nice_num(median, 0, FALSE)}%** [{nice_num(hdi_05, 1, FALSE)}; {nice_num(hdi_95, 1, FALSE)}]")) %>%
-  select(question, type, label)
-
-data_samples_grouped_summary_hdi <-
-  data_samples_grouped_summary %>%
-  left_join(metalog_summary_labels_hdi, by = c("question", "type"))
-
-
-j_png("iaps - metalog plot example v3",
-      height = 5)
-
-data_samples_grouped_summary_hdi %>%
-  ggplot(aes(x = median, y = question, color = type)) +
-  scale_x_continuous(limits = c(0, 152.5), breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), expand = expansion(add = c(1, 1))) +
-  scale_y_discrete(limits = rev) +
-  geom_errorbarh(aes(xmin = hdi_05, xmax = hdi_95), position = position_dodge(.8), height =.25) +  # Use hdi_05 and hdi_95
-  geom_point(position = position_dodge(.8)) +
-  geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth =.1) +
-  geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), fill = NA, text.color = "black", color = NA, position = position_dodge(.8), size = 2.4, family = "Jost", show.legend = FALSE) +
-  scale_alpha_manual(values = c(1, 1)) +
-  scale_color_manual(values = my_colors) +
-  guides(color = guide_legend(reverse = TRUE)) +
-  labs(
-    x = "",
-    y = "",
-    title = "Estimates from Metalog Distributions (HDI)",  # Updated title
-    color = "Respondent type:"
-  ) +
-  theme(
-    legend.position = "top"
-  )
-dev.off()
-
 # Create labels (using quantiles)
 metalog_summary_labels_quant <-
   data_samples_combined_summary %>%
@@ -448,37 +314,6 @@ beta_prior_1 <-
   c(set_prior("normal(0 , 1.33)", class = "b"), # this will convert to a ~flat prior on the probability tapering off at 0 and 1
     set_prior("normal(0, 1.5)", ub = 6, class = "b", dpar = "phi"),
     set_prior("exponential(3)", class = "sd"))
-
-# quick check on the prior for the mean probability -
-# am hoping for it to come out roughly flat *on the transformed scale*
-# i.e., the probability scale which is where we are hoping for the 'flatness'
-beta_fit_1_prior_check <-
-  brm(formula = beta_form_1,
-      family = Beta(),
-      data = data,
-      sample_prior = "only",
-      control = list(adapt_delta = 0.99, max_treedepth = 15),
-      prior = beta_prior_1,
-      chains = 4,
-      cores = 4,
-      iter = 1500,
-      warmup = 500,
-      init = 0,
-      # backend = 'cmdstanr', # you can hash out from here to the last line if you haven't set up
-      # threads = threading(4), # cmdstan - it's not necessary to do, it is just how I have
-      # #seed = 1111, # it on my computer and can run a bit faster like this, but these are quick
-      # silent = 0, # to run anyway and cmdstan can sometimes take a bit of setting up.
-      # refresh = 100,
-      # stan_model_args = list(stanc_options = list('O1'))
-      )
-
-# yep, it comes out quite flat, tapering off at the extremes as we'd expect:
-add_epred_draws(newdata = tibble(question = "Overall",
-                                 type = "expert",
-                                 usercode = "babbage"),
-                object = beta_fit_1_prior_check) %>% 
-  ggplot(aes(x = .epred)) +
-  geom_histogram()
 
 beta_fit_1 <-
   brm(formula = beta_form_1,
@@ -549,21 +384,17 @@ beta_summary_1 <-
     mean = mean(estimate),
     median = median(estimate),
     mode = hdp(estimate),
-    lower_hdi_90 = hdi(estimate, .9)[1],
-    upper_hdi_90 = hdi(estimate, .9)[2],
     lower_quant_90 = quantile(estimate, .05),
     upper_quant_90 = quantile(estimate, .95)
   ) %>% 
   mutate(perc_mean = case_when(parameter == "probability" ~ mean * 100),
          perc_median = case_when(parameter == "probability" ~ median * 100),
          perc_mode = case_when(parameter == "probability" ~ mode * 100),
-         perc_lower_hdi_90 = case_when(parameter == "probability" ~ lower_hdi_90 * 100),
-         perc_upper_hdi_90 = case_when(parameter == "probability" ~ upper_hdi_90 * 100),
          perc_lower_quant_90 = case_when(parameter == "probability" ~ lower_quant_90 * 100),
          perc_upper_quant_90 = case_when(parameter == "probability" ~ upper_quant_90 * 100),
          ) %>% 
   mutate(label = case_when(parameter == "probability" ~ glue::glue("**{nice_num(perc_median, 0, FALSE)}%** [{nice_num(perc_lower_quant_90, 1, FALSE)}; {nice_num(perc_upper_quant_90, 1, FALSE)}]"),
-                           TRUE ~ glue::glue("**{nice_num(median, 1)}** [{nice_num(lower_quant_90, 1)}; {nice_num(upper_hdi_90, 1)}]"))
+                           TRUE ~ glue::glue("**{nice_num(median, 1)}** [{nice_num(lower_quant_90, 1)}; {nice_num(upper_quant_90, 1)}]"))
          )
 
 beta_summary_1_v2 <-
@@ -602,61 +433,6 @@ beta_summary_1 %>%
     color = "Respondent type:"
   ) +
   theme(
-    legend.position = "top"
-  )
-dev.off()
-
-##### generate info for also showing the spread of the implied data #####
-# extract 25 draws
-beta_epred_1_samples <-
-  beta_epred_1 %>% 
-  filter(draw %in% round(seq(1, max(beta_epred_1$draw), length.out = 25)))
-
-make_with_phi <- function(input) {
-  
-  x_range <-
-    seq(.0005, .9995, length.out = 500)
-  
-  y_density <-
-    dprop(x_range,
-          size = input$phi,
-          mean = input$probability)
-  
-  output <-
-    tibble(
-      y_density = y_density,
-      x_range = x_range,
-      question = input$question,
-      type = input$type,
-      draw = input$draw
-    )
-  
-  return(output)
-  
-}
-
-beta_epred_1_distributions <-
-  beta_epred_1_samples %>% 
-  group_split(question, type, draw) %>% 
-  map_df(.f = make_with_phi)
-
-j_png("iaps - beta with phi example",
-      height = 7)
-beta_epred_1_distributions %>% 
-  arrange(draw, x_range) %>% 
-  ggplot(aes(x = x_range, y = y_density, color = type, group = interaction(draw, type))) +
-  geom_path(alpha = .33) +
-  scale_color_manual(values = my_colors) +
-  facet_wrap(~question, scale = "free_y", ncol = 2) +
-  labs(
-    x = "",
-    y = "",
-    color = "Respondent type",
-    subtitle = linebreaker("Each line is one of 25 draws from the posterior for the estimated beta distribution.", 90),
-    title = linebreaker("Including the spread of the data as well, you can see that the estimated probabilities ultimately still cover a wide range", 75)
-  ) +
-  theme(
-    axis.text.y = element_blank(),
     legend.position = "top"
   )
 dev.off()
