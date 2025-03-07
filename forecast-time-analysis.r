@@ -149,6 +149,18 @@ checkpoint_changes2 <- checkpoints %>%
   count(question, change) %>%
   pivot_wider(names_from = change, values_from = n, values_fill = 0)
 
+# Calculate the average width in confidence intervals for each phase and question
+confidence_widths <- checkpoints %>%
+  group_by(question, checkpoint) %>%
+  summarize(
+    avg_width = mean(high - low),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(names_from = checkpoint, values_from = avg_width) %>%
+  # absolute change and pct change in confidence interval width
+  mutate(abs_change = Final - Initial,
+    pct_change = 100 * abs_change / Initial)
+
 # ==================== VISUALIZATIONS ====================
 # 1. Distribution of when participants made updates
 j_png("update_time_distribution",
@@ -241,6 +253,34 @@ checkpoints %>%
     legend.position = "right"
   )
 dev.off()
+
+# 3. Comparing forecasts at checkpoints
+
+j_png("checkpoints_cis",
+      height = 4, width = 7)
+checkpoints %>%
+  filter(!question %in% c("Military")) %>%
+  ggplot(aes(x = checkpoint, y = high - low, group = usercode, shape = type, color = usercode)) +
+  geom_line(alpha = 0.6, linewidth = 0.33) +
+  geom_point(size = 1.5) +
+  facet_wrap(~question, scales = "free_y") +
+  guides(
+    color = guide_legend(override.aes = list(shape = 15)), # Set default shape for all colors
+    shape = guide_legend(title = "Respondent type")
+  ) +
+  labs(
+    title = "Evolution of Confidence Interval Widths Across Workshop Phases",
+    x = "Workshop Phase",
+    y = "Width of confidence interval (%)",
+    shape = "Respondent type",
+    color = "Participant"
+  ) +
+  theme(
+    legend.position = "right"
+  )
+dev.off()
+
+
 
 # 4. Initial vs final forecast
 
