@@ -375,8 +375,8 @@ beta_epred_1 <-
   ) %>%
   mutate(question = factor(question, levels = question_order))
 
-beta_summary_1 <-
-  beta_epred_1 %>% 
+# Compute summary statistics separately for each type
+beta_summary_1_grouped <- beta_epred_1 %>% 
   pivot_longer(cols = c(probability, phi),
                names_to = "parameter",
                values_to = "estimate") %>% 
@@ -386,20 +386,41 @@ beta_summary_1 <-
     median = median(estimate),
     mode = hdp(estimate),
     lower_quant_90 = quantile(estimate, .05),
-    upper_quant_90 = quantile(estimate, .95)
-  ) %>% 
+    upper_quant_90 = quantile(estimate, .95),
+    .groups = "drop"
+  )
+
+# Compute overall summary statistics (ignoring type)
+beta_summary_1_all <- beta_epred_1 %>% 
+  pivot_longer(cols = c(probability, phi),
+               names_to = "parameter",
+               values_to = "estimate") %>% 
+  group_by(question, parameter) %>%  # No 'type' grouping here
+  summarise(
+    type = "all",
+    mean = mean(estimate),
+    median = median(estimate),
+    mode = hdp(estimate),
+    lower_quant_90 = quantile(estimate, .05),
+    upper_quant_90 = quantile(estimate, .95),
+    .groups = "drop"
+  )
+
+# Combine both data frames
+beta_summary_1 <- bind_rows(beta_summary_1_grouped, beta_summary_1_all) %>%
   mutate(perc_mean = case_when(parameter == "probability" ~ mean * 100),
          perc_median = case_when(parameter == "probability" ~ median * 100),
          perc_mode = case_when(parameter == "probability" ~ mode * 100),
          perc_lower_quant_90 = case_when(parameter == "probability" ~ lower_quant_90 * 100),
-         perc_upper_quant_90 = case_when(parameter == "probability" ~ upper_quant_90 * 100),
-         ) %>% 
+         perc_upper_quant_90 = case_when(parameter == "probability" ~ upper_quant_90 * 100)
+  ) %>% 
   mutate(label = case_when(parameter == "probability" ~ glue::glue("**{nice_num(perc_median, 0, FALSE)}%** [{nice_num(perc_lower_quant_90, 1, FALSE)}; {nice_num(perc_upper_quant_90, 1, FALSE)}]"),
                            TRUE ~ glue::glue("**{nice_num(median, 1)}** [{nice_num(lower_quant_90, 1)}; {nice_num(upper_quant_90, 1)}]"))
-         )
+  ) %>%
+  mutate(type = factor(type, levels = c("forecaster", "expert", "all")))  # Ensure correct order for plotting
 
-beta_summary_1_v2 <-
-  beta_summary_1 %>% 
+# Create labels for full summary display
+beta_summary_1_v2 <- beta_summary_1 %>% 
   select(question, type, parameter, label) %>% 
   pivot_wider(names_from = parameter,
               values_from = label) %>% 
@@ -412,11 +433,12 @@ beta_summary_1 <-
       select(question, type, full_label),
     by = c("question", "type")
   )
-  
+
+# Generate the plot
 j_png("beta regression summary plot",
       height = 5)
 beta_summary_1 %>%
-  filter(parameter == "probability") %>% 
+  filter(parameter == "probability", question != "Military") %>% 
   ggplot(aes(x = median * 100, y = question, color = type)) +
   scale_x_continuous(limits = c(0, 152.5), breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), expand = expansion(add = 0)) +
   scale_y_discrete(limits = rev) +
@@ -424,7 +446,7 @@ beta_summary_1 %>%
   geom_point(position = position_dodge(.8)) +
   geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth = .1) +
   geom_richtext(aes(x = mean(c(100, 152.5)), label = full_label, alpha = type), fill = NA, text.color = "black", color = NA, position = position_dodge(.8), size = 2.4, family = "Jost", show.legend = FALSE) +
-  scale_alpha_manual(values = c(1, 1)) + # alpha here is just used so that we can dodge the text above, otherwise it will overlap
+  scale_alpha_manual(values = c(1, 1, 1)) + # Ensure 'all' category is properly dodged
   scale_color_manual(values = my_colors) +
   guides(color = guide_legend(reverse = TRUE)) +
   labs(
