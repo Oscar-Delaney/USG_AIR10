@@ -459,3 +459,153 @@ beta_summary_1 %>%
     legend.position = "top"
   )
 dev.off()
+
+
+##### Add new section for predicted draws #####
+# This section generates predictions for what a new forecaster/expert would estimate
+# (rather than just the uncertainty in the mean)
+
+# Generate predicted draws (full predictive distribution including the phi parameter)
+beta_pred_1 <-
+  add_predicted_draws(newdata = crossing(question = question_order,
+                                        type = c("expert", "forecaster")),
+                     re_formula = NA,  # Exclude random effects
+                     object = beta_fit_1,
+                     value = "probability") %>% 
+  ungroup() %>% 
+  select(-c(.row, .chain, .iteration)) %>% 
+  rename(draw = .draw)
+
+# Compute summary statistics separately for each type
+beta_pred_summary_grouped <- beta_pred_1 %>% 
+  group_by(question, type) %>% 
+  summarise(
+    mean = mean(probability),
+    median = median(probability),
+    mode = hdp(probability),
+    lower_quant_90 = quantile(probability, .05),
+    upper_quant_90 = quantile(probability, .95),
+    .groups = "drop"
+  )
+
+# Compute overall summary statistics (ignoring type)
+beta_pred_summary_all <- beta_pred_1 %>% 
+  group_by(question) %>%
+  summarise(
+    type = "all",
+    mean = mean(probability),
+    median = median(probability),
+    mode = hdp(probability),
+    lower_quant_90 = quantile(probability, .05),
+    upper_quant_90 = quantile(probability, .95),
+    .groups = "drop"
+  )
+
+# Combine both data frames
+beta_pred_summary <- bind_rows(beta_pred_summary_grouped, beta_pred_summary_all) %>%
+  mutate(
+    perc_mean = mean * 100,
+    perc_median = median * 100,
+    perc_mode = mode * 100,
+    perc_lower_quant_90 = lower_quant_90 * 100,
+    perc_upper_quant_90 = upper_quant_90 * 100,
+    label = glue::glue("**{nice_num(perc_median, 0, FALSE)}%** [{nice_num(perc_lower_quant_90, 1, FALSE)}; {nice_num(perc_upper_quant_90, 1, FALSE)}]")
+  ) %>%
+  mutate(type = factor(type, levels = c("forecaster", "expert", "all")),  # Ensure correct order for plotting
+    question = factor(question, levels = question_order))  # Ensure correct question ordering
+
+  
+# Generate the plot for predicted distribution
+j_png("beta regression predicted distribution plot",
+      height = 5)
+beta_pred_summary %>%
+  filter(question != "Military") %>% 
+  ggplot(aes(x = perc_median, y = question, color = type)) +
+  scale_x_continuous(limits = c(0, 152.5), breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), 
+                    labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), 
+                    expand = expansion(add = 0)) +
+  scale_y_discrete(limits = rev) +
+  geom_errorbarh(aes(xmin = perc_lower_quant_90, xmax = perc_upper_quant_90), 
+                position = position_dodge(.8), height = .25) +
+  geom_point(position = position_dodge(.8)) +
+  geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), 
+           fill = "grey99", color = "grey98", linewidth = .1) +
+  geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), 
+               fill = NA, text.color = "black", color = NA, 
+               position = position_dodge(.8), size = 2.4, family = "Jost", 
+               show.legend = FALSE) +
+  scale_alpha_manual(values = c(1, 1, 1)) +
+  scale_color_manual(values = my_colors) +
+  guides(color = guide_legend(reverse = TRUE)) +
+  labs(
+    x = "",
+    y = "",
+    title = "Predicted distribution of individual forecasts from beta regression model",
+    subtitle = "Showing what a new forecaster/expert's estimate would likely be (full predictive distribution)",
+    color = "Respondent type"
+  ) +
+  theme(
+    legend.position = "top"
+  )
+dev.off()
+
+# Compare with EPRED results (posterior over the mean)
+j_png("beta regression comparison plot",
+      height = 7)
+
+# Combine both datasets for comparison
+comparison_data <- bind_rows(
+  beta_summary_1 %>% 
+    filter(parameter == "probability") %>%
+    mutate(distribution_type = "Posterior distribution of the mean") %>%
+    select(question, type, perc_median, perc_lower_quant_90, perc_upper_quant_90, distribution_type),
+  
+  beta_pred_summary %>%
+    mutate(distribution_type = "Full predictive distribution") %>%
+    select(question, type, perc_median, perc_lower_quant_90, perc_upper_quant_90, distribution_type)
+) %>%
+  filter(question != "Military")
+
+# Add raw data points for comparison
+raw_data_points <- data %>%
+  filter(question != "Military") %>%
+  mutate(
+    perc_median = main,  # Already in percentage format
+    distribution_type = "Raw individual estimates"
+  ) %>%
+  select(question, type, usercode, perc_median, distribution_type)
+
+# Create the comparison plot
+comparison_data %>%
+  ggplot(aes(x = perc_median, y = question, color = type)) +
+  scale_x_continuous(limits = c(0, 100), expand = expansion(add = c(1, 1))) +
+  scale_y_discrete(limits = rev) +
+  # Add raw data points
+  geom_point(data = raw_data_points, 
+             aes(shape = "Individual estimates"), 
+             position = position_jitter(height = 0.2), 
+             alpha = 0.7, size = 2) +
+  # Add intervals for both distribution types
+  geom_errorbarh(aes(xmin = perc_lower_quant_90, xmax = perc_upper_quant_90, 
+                    linetype = distribution_type),
+                position = position_dodge(width = 0.8), height = 0.2) +
+  geom_point(aes(shape = distribution_type), 
+            position = position_dodge(width = 0.8)) +
+  scale_color_manual(values = my_colors) +
+  scale_shape_manual(values = c("Posterior distribution of the mean" = 16, 
+                              "Full predictive distribution" = 17,
+                              "Individual estimates" = 1)) +
+  labs(
+    x = "Estimated probability (%)",
+    y = "",
+    title = "Comparison of different distribution types from beta regression",
+    subtitle = "Showing both the uncertainty in the mean and the full predictive distribution",
+    color = "Respondent type",
+    shape = "Distribution type",
+    linetype = "Distribution type"
+  ) +
+  theme(
+    legend.position = "right"
+  ) +
+  facet_wrap(~ distribution_type, ncol = 1)
+dev.off()
