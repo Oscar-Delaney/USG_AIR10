@@ -7,6 +7,7 @@ library(tidystats)
 library(rmetalog)
 library(ggtext)
 library(extraDistr)
+library(betareg)
 
 # set the theme and colors
 theme_set(theme_jimbilben(10))
@@ -608,4 +609,312 @@ comparison_data %>%
     legend.position = "right"
   ) +
   facet_wrap(~ distribution_type, ncol = 1)
+dev.off()
+
+##### Frequentist Beta Regression Analysis #####
+# This implements a standard frequentist beta regression model
+# without Bayesian priors that might skew the results
+
+# Prepare data for frequentist beta regression
+# The response variable must be strictly between 0 and 1 (not inclusive)
+freq_data <- data %>%
+  mutate(
+    # Apply a small adjustment to ensure values are strictly between 0 and 1
+    beta_response = ifelse(beta_main == 0, 0.002, 
+                   ifelse(beta_main == 1, 0.998, beta_main))
+  )
+
+# Create dummy variables for question:type interactions
+# This replicates the model structure from the Bayesian version
+freq_data <- freq_data %>%
+  mutate(
+    question_type = paste(question, type, sep = "_")
+  )
+
+# Fit frequentist beta regression model
+# Model has the same structure as the Bayesian model (question:type interaction for mean, question for precision)
+freq_model <- betareg(
+  beta_response ~ 0 + question_type | question, # 0 + removes intercept, | separates mean model from precision model
+  data = freq_data
+)
+
+# Display model summary
+summary_freq_model <- summary(freq_model)
+print(summary_freq_model)
+
+# Function to generate predictions for a new observation
+predict_beta <- function(model, newdata) {
+  # Get predictions for mean
+  pred_mean <- predict(model, newdata = newdata, type = "response")
+  
+  # Get precision parameters (phi)
+  phi_coeffs <- coef(model, model = "precision")
+  
+  # Extract question from newdata and match to phi parameter
+  questions <- newdata$question
+  phis <- numeric(length(questions))
+  
+  for (i in 1:length(questions)) {
+    q <- as.character(questions[i])
+    # Find the corresponding phi parameter
+    phi_name <- paste0("(phi)_", q)
+    # If exact match not found, use intercept
+    if (phi_name %in% names(phi_coeffs)) {
+      phis[i] <- exp(phi_coeffs[phi_name]) # Phi is on log scale in betareg
+    } else {
+      phis[i] <- exp(phi_coeffs["(Intercept)"])
+    }
+  }
+  
+  # For each prediction, generate a sample from the corresponding beta distribution
+  results <- data.frame(
+    question = questions,
+    mean = pred_mean,
+    phi = phis
+  )
+  
+  return(results)
+}
+
+# Create newdata for prediction
+newdata_freq <- crossing(
+  question = question_order,
+  type = c("expert", "forecaster")
+)
+
+# Add the question_type column needed for prediction
+newdata_freq <- newdata_freq %>%
+  mutate(
+    question_type = paste(question, type, sep = "_")
+  )
+
+# Generate predictions
+freq_predictions <- predict_beta(freq_model, newdata_freq)
+
+# Convert predictions to percentages for easier interpretation
+freq_predictions <- freq_predictions %>%
+  mutate(
+    mean_percent = mean * 100,
+    # Calculate alpha and beta parameters for the beta distribution
+    alpha = mean * phi,
+    beta = (1 - mean) * phi,
+    # Calculate 90% confidence intervals using qbeta
+    lower_90 = qbeta(0.05, alpha, beta) * 100,
+    upper_90 = qbeta(0.95, alpha, beta) * 100
+  )
+
+# Simulate from the fitted beta distributions to get full predictive distributions
+set.seed(123) # for reproducibility
+n_sims <- 10000
+
+# Create a dataframe to store simulations
+freq_simulations <- data.frame()
+
+for (i in 1:nrow(freq_predictions)) {
+  alpha_i <- freq_predictions$alpha[i]
+  beta_i <- freq_predictions$beta[i]
+  
+  # Generate random samples from Beta distribution
+  samples <- rbeta(n_sims, alpha_i, beta_i)
+  
+  # Add to results dataframe
+  sim_df <- data.frame(
+    question = rep(freq_predictions$question[i], n_sims),
+    type = rep(newdata_freq$type[i], n_sims),
+    value = samples
+  )
+  
+  freq_simulations <- rbind(freq_simulations, sim_df)
+}
+
+# Calculate summary statistics from simulations
+freq_sim_summary <- freq_simulations %>%
+  group_by(question, type) %>%
+  summarise(
+    mean = mean(value),
+    median = median(value),
+    mode = hdp(value),
+    lower_quant_90 = quantile(value, 0.05),
+    upper_quant_90 = quantile(value, 0.95),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    # Convert to percentages
+    mean_percent = mean * 100,
+    median_percent = median * 100,
+    mode_percent = mode * 100,
+    lower_percent = lower_quant_90 * 100,
+    upper_percent = upper_quant_90 * 100,
+    # Create label for plot
+    label = glue::glue("**{nice_num(median_percent, 0, FALSE)}%** [{nice_num(lower_percent, 1, FALSE)}; {nice_num(upper_percent, 1, FALSE)}]")
+  )
+
+# Add "all" category by combining samples from both types
+freq_sim_all <- freq_simulations %>%
+  group_by(question) %>%
+  summarise(
+    type = "all",
+    mean = mean(value),
+    median = median(value),
+    mode = hdp(value),
+    lower_quant_90 = quantile(value, 0.05),
+    upper_quant_90 = quantile(value, 0.95),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    mean_percent = mean * 100,
+    median_percent = median * 100,
+    mode_percent = mode * 100,
+    lower_percent = lower_quant_90 * 100,
+    upper_percent = upper_quant_90 * 100,
+    label = glue::glue("**{nice_num(median_percent, 0, FALSE)}%** [{nice_num(lower_percent, 1, FALSE)}; {nice_num(upper_percent, 1, FALSE)}]")
+  )
+
+# Combine summaries
+freq_sim_combined <- bind_rows(freq_sim_summary, freq_sim_all) %>%
+  mutate(type = factor(type, levels = c("forecaster", "expert", "all")))
+
+# Create plot for frequentist beta regression predictions
+j_png("frequentist beta regression plot",
+      height = 5)
+freq_sim_combined %>%
+  filter(question != "Military") %>%
+  mutate(question = factor(question, levels = question_order)) %>%
+  ggplot(aes(x = median_percent, y = question, color = type)) +
+  scale_x_continuous(limits = c(0, 152.5), 
+                    breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), 
+                    labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), 
+                    expand = expansion(add = 0)) +
+  scale_y_discrete(limits = rev) +
+  geom_errorbarh(aes(xmin = lower_percent, xmax = upper_percent), 
+                position = position_dodge(.8), height = .25) +
+  geom_point(position = position_dodge(.8)) +
+  geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), 
+           fill = "grey99", color = "grey98", linewidth = .1) +
+  geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), 
+               fill = NA, text.color = "black", color = NA, 
+               position = position_dodge(.8), size = 2.4, family = "Jost", 
+               show.legend = FALSE) +
+  scale_alpha_manual(values = c(1, 1, 1)) +
+  scale_color_manual(values = my_colors) +
+  guides(color = guide_legend(reverse = TRUE)) +
+  labs(
+    x = "",
+    y = "",
+    title = "Frequentist Beta Regression Model Predictions",
+    subtitle = "Predictive distribution without Bayesian priors",
+    color = "Respondent type"
+  ) +
+  theme(
+    legend.position = "top"
+  )
+dev.off()
+
+# Compare raw medians with frequentist model predictions
+raw_vs_freq_comparison <- data %>%
+  group_by(question, type) %>%
+  summarise(
+    raw_mean = mean(main) / 100,  # Convert to proportion
+    raw_median = median(main) / 100,
+    raw_min = min(main) / 100,
+    raw_max = max(main) / 100,
+    n = n(),
+    .groups = "drop"
+  ) %>%
+  left_join(
+    freq_sim_summary %>% select(question, type, mean, median, lower_quant_90, upper_quant_90),
+    by = c("question", "type")
+  ) %>%
+  mutate(
+    diff_mean = (mean - raw_mean) * 100,  # Difference in percentage points
+    diff_median = (median - raw_median) * 100
+  )
+
+# Print comparison to see if frequentist approach better matches raw data
+print(raw_vs_freq_comparison %>% 
+      select(question, type, raw_median, median, diff_median, lower_quant_90, upper_quant_90))
+
+# Create a plot to compare Bayesian and Frequentist approaches
+# First, prepare data from both approaches
+bayesian_data <- beta_pred_summary %>%
+  select(question, type, perc_median, perc_lower_quant_90, perc_upper_quant_90) %>%
+  rename(
+    median = perc_median,
+    lower = perc_lower_quant_90,
+    upper = perc_upper_quant_90
+  ) %>%
+  mutate(model = "Bayesian")
+
+frequentist_data <- freq_sim_combined %>%
+  select(question, type, median_percent, lower_percent, upper_percent) %>%
+  rename(
+    median = median_percent,
+    lower = lower_percent,
+    upper = upper_percent
+  ) %>%
+  mutate(model = "Frequentist")
+
+# Combine the datasets
+comparison_data <- bind_rows(bayesian_data, frequentist_data) %>%
+  mutate(
+    question = factor(question, levels = question_order),
+    type = factor(type, levels = c("forecaster", "expert", "all")),
+    model = factor(model, levels = c("Bayesian", "Frequentist"))
+  )
+
+# Create raw data for plotting
+raw_data_for_plot <- data %>%
+  group_by(question, type) %>%
+  summarise(
+    median = median(main),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    model = "Raw data",
+    lower = NA,  # No CIs for raw data
+    upper = NA,
+    question = factor(question, levels = question_order),
+    type = factor(type, levels = c("forecaster", "expert"))
+  )
+
+# Add individual points - add a model column to avoid the error
+individual_points <- data %>%
+  select(question, type, main) %>%
+  rename(value = main) %>%
+  mutate(
+    question = factor(question, levels = question_order),
+    type = factor(type, levels = c("forecaster", "expert")),
+    model = "Individual data"  # Add this line to create the model column
+  )
+
+# Create comparison plot
+j_png("bayesian vs frequentist comparison",
+      height = 7)
+comparison_data %>%
+  filter(question != "Military", type != "all") %>%  # Focus on forecaster vs expert
+  ggplot(aes(x = median, y = question, color = model, shape = model)) +
+  # Add raw data points - now specify aesthetics differently to avoid conflict
+  geom_point(data = individual_points %>% filter(question != "Military"),
+            aes(x = value, y = question), 
+            position = position_jitter(height = 0.2, width = 0),
+            alpha = 0.4, size = 2, color = "gray50", shape = 16) + # Fixed by setting color and shape directly
+  # Add model predictions
+  geom_errorbarh(aes(xmin = lower, xmax = upper), 
+                position = position_dodge(width = 0.8), height = 0.3) +
+  geom_point(position = position_dodge(width = 0.8), size = 3) +
+  scale_x_continuous(limits = c(0, 100), expand = expansion(add = c(1, 1))) +
+  scale_y_discrete(limits = rev) +
+  scale_color_brewer(palette = "Set1") +
+  facet_grid(~ type) +
+  labs(
+    x = "Estimated probability (%)",
+    y = "",
+    title = "Comparison of Bayesian vs. Frequentist Beta Regression",
+    subtitle = "With individual data points in gray",
+    color = "Model type",
+    shape = "Model type"
+  ) +
+  theme(
+    legend.position = "top"
+  )
 dev.off()
