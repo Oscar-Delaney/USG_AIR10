@@ -161,42 +161,69 @@ simple_aggregation <- function(data) {
   return(combined_results)
 }
 
+# Create a common function for generating summary plots
+create_summary_plot <- function(data, 
+                               title,
+                               subtitle = NULL,
+                               exclude_questions = "Military",
+                               filename = NULL,
+                               height = 5) {
+  
+  # Filter out questions if specified
+  plot_data <- data
+  if (!is.null(exclude_questions)) {
+    plot_data <- plot_data %>%
+      filter(!(question %in% exclude_questions))
+  }
+  
+  # Create the plot
+  p <- plot_data %>%
+    ggplot(aes(x = median, y = question, color = type)) +
+    scale_x_continuous(limits = c(0, 152.5), 
+                       breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), 
+                       labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), 
+                       expand = expansion(add = c(1,1))) +
+    scale_y_discrete(limits = rev) +
+    geom_errorbarh(aes(xmin = quant_05, xmax = quant_95), position = position_dodge(.8), height = .25) +
+    geom_point(position = position_dodge(.8)) +
+    geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth = .1) +
+    geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), 
+                  fill = NA, text.color = "black", color = NA, 
+                  position = position_dodge(.8), size = 2.4, 
+                  family = "Jost", show.legend = FALSE) +
+    scale_alpha_manual(values = c(1, 1, 1)) +
+    scale_color_manual(values = my_colors) +
+    guides(color = guide_legend(reverse = TRUE)) +
+    labs(
+      x = "",
+      y = "",
+      title = title,
+      subtitle = subtitle,
+      color = "Respondent type"
+    ) +
+    theme(
+      legend.position = "top"
+    )
+  
+  # Save as PNG if filename is provided
+  if (!is.null(filename)) {
+    j_png(filename, height = height)
+    print(p)
+    dev.off()
+  }
+  
+  return(p)
+}
+
 # Apply the function to your data
 simple_agg_results <- simple_aggregation(data)
 
-# Create a similar summary plot using the simple aggregation method
-j_png("simple_aggregation_summary_plot",
-      height = 5)
-
-simple_agg_results %>%
-  filter(question != "Military") %>%  # Remove Military question to match the original plot
-  ggplot(aes(x = median, y = question, color = type)) +
-  scale_x_continuous(limits = c(0, 152.5), 
-                     breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), 
-                     labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), 
-                     expand = expansion(add = c(1,1))) +
-  scale_y_discrete(limits = rev) +
-  geom_errorbarh(aes(xmin = quant_05, xmax = quant_95), position = position_dodge(.8), height = .25) +
-  geom_point(position = position_dodge(.8)) +
-  geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth = .1) +
-  geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), 
-               fill = NA, text.color = "black", color = NA, 
-               position = position_dodge(.8), size = 2.4, 
-               family = "Jost", show.legend = FALSE) +
-  scale_alpha_manual(values = c(1, 1, 1)) +
-  scale_color_manual(values = my_colors) +
-  guides(color = guide_legend(reverse = TRUE)) +
-  labs(
-    x = "",
-    y = "",
-    title = "Simple arithmetic mean aggregation of estimates",
-    subtitle = "Using mean of medians and confidence bounds",
-    color = "Respondent type"
-  ) +
-  theme(
-    legend.position = "top"
-  )
-dev.off()
+# Create a summary plot using the simple aggregation method
+create_summary_plot(
+  simple_agg_results,
+  title = "Simple arithmetic mean aggregation of estimates",
+  filename = "summary_simple_aggregation"
+)
 
 # Read the Bayesian model data
 bayesian_data <- read_csv("data/bayesian.csv")
@@ -204,45 +231,21 @@ bayesian_data <- read_csv("data/bayesian.csv")
 # Apply the factor ordering
 bayesian_data <- bayesian_data %>%
   mutate(question = factor(question, levels = question_order)) %>%
-  mutate(type = factor(type, levels = c("forecaster", "expert", "all")))
-
-# Create labels for the plot
-bayesian_data <- bayesian_data %>%
-  mutate(label = glue::glue("**{round(median*100, 1)}%** [{round(quant_05*100, 1)}; {round(quant_95*100, 1)}]"))
-
-# Create a similar summary plot using the simple aggregation method
-j_png("bayesian_hierarchical_model",
-      height = 5)
-
-bayesian_data %>%
-  filter(question != "Military") %>%  # Remove Military question to match the original plot
-  ggplot(aes(x = median * 100, y = question, color = type)) +
-  scale_x_continuous(limits = c(0, 152.5), 
-                     breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), 
-                     labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), 
-                     expand = expansion(add = c(1,1))) +
-  scale_y_discrete(limits = rev) +
-  geom_errorbarh(aes(xmin = quant_05 * 100, xmax = quant_95 * 100), position = position_dodge(.8), height = .25) +
-  geom_point(position = position_dodge(.8)) +
-  geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth = .1) +
-  geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), 
-               fill = NA, text.color = "black", color = NA, 
-               position = position_dodge(.8), size = 2.4, 
-               family = "Jost", show.legend = FALSE) +
-  scale_alpha_manual(values = c(1, 1, 1)) +
-  scale_color_manual(values = my_colors) +
-  guides(color = guide_legend(reverse = TRUE)) +
-  labs(
-    x = "",
-    y = "",
-    title = "Bayesian Hierarchical Model Estimates",
-    subtitle = "Posterior medians with 90% credible intervals",
-    color = "Respondent type"
-  ) +
-  theme(
-    legend.position = "top"
+  mutate(type = factor(type, levels = c("forecaster", "expert", "all"))) %>%
+  mutate(
+    # Convert to percentages for consistency with other plots
+    median = median * 100,
+    quant_05 = quant_05 * 100,
+    quant_95 = quant_95 * 100,
+    label = glue::glue("**{round(median, 1)}%** [{round(quant_05, 1)}; {round(quant_95, 1)}]")
   )
-dev.off()
+
+# Create a summary plot using the Bayesian hierarchical model
+create_summary_plot(
+  bayesian_data,
+  title = "Bayesian hierarchical model estimates",
+  filename = "summary_bayesian_hierarchical_model"
+)
 
 #### metalog it ####
 make_metalog <- function(input_tibble, n_samples = 25000) {
@@ -390,33 +393,12 @@ data_samples_combined_summary_quant <-
   left_join(metalog_summary_labels_quant, by = c("question", "type")) %>%
   mutate(type = factor(type, levels = c("forecaster", "expert", "all")))
 
-
-j_png("metalog summary plot",
-      height = 5)
-
-data_samples_combined_summary_quant %>%
-  filter(question != "Military") %>%  # Remove Military question
-  ggplot(aes(x = median, y = question, color = type)) +
-  scale_x_continuous(limits = c(0, 152.5), breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), expand = expansion(add = c(1,1))) +
-  scale_y_discrete(limits = rev) +
-  geom_errorbarh(aes(xmin = quant_05, xmax = quant_95), position = position_dodge(.8), height =.25) +  # Use quant_05 and quant_95
-  geom_point(position = position_dodge(.8)) +
-  geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth =.1) +
-  geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), fill = NA, text.color = "black", color = NA, position = position_dodge(.8), size = 2.4, family = "Jost", show.legend = FALSE) +  # Use label (quantiles)
-  scale_alpha_manual(values = c(1, 1, 1)) +
-  scale_color_manual(values = my_colors) +
-  guides(color = guide_legend(reverse = TRUE)) +
-  labs(
-    x = "",
-    y = "",
-    title = "Metalog distributions group estimates",
-    color = "Respondent type"
-  ) +
-  theme(
-    legend.position = "top"
-  )
-dev.off()
-
+# Create a summary plot using the metalog distributions
+create_summary_plot(
+  data_samples_combined_summary_quant,
+  title = "Metalog distributions group estimates",
+  filename = "summary_metalogs"
+)
 
 ##### Frequentist Beta Regression Analysis #####
 # This implements a standard frequentist beta regression model
@@ -538,22 +520,15 @@ for (i in 1:nrow(freq_predictions)) {
 freq_sim_summary <- freq_simulations %>%
   group_by(question, type) %>%
   summarise(
-    mean = mean(value),
-    median = median(value),
-    mode = hdp(value),
-    lower_quant_90 = quantile(value, 0.05),
-    upper_quant_90 = quantile(value, 0.95),
+    mean = mean(value) * 100,
+    median = median(value) * 100,
+    mode = hdp(value) * 100,
+    quant_05 = quantile(value, 0.05) * 100,
+    quant_95 = quantile(value, 0.95) * 100,
     .groups = "drop"
   ) %>%
   mutate(
-    # Convert to percentages
-    mean_percent = mean * 100,
-    median_percent = median * 100,
-    mode_percent = mode * 100,
-    lower_percent = lower_quant_90 * 100,
-    upper_percent = upper_quant_90 * 100,
-    # Create label for plot
-    label = glue::glue("**{nice_num(median_percent, 0, FALSE)}%** [{nice_num(lower_percent, 1, FALSE)}; {nice_num(upper_percent, 1, FALSE)}]")
+    label = glue::glue("**{nice_num(median, 0, FALSE)}%** [{nice_num(quant_05, 1, FALSE)}; {nice_num(quant_95, 1, FALSE)}]")
   )
 
 # Add "all" category by combining samples from both types
@@ -561,58 +536,25 @@ freq_sim_all <- freq_simulations %>%
   group_by(question) %>%
   summarise(
     type = "all",
-    mean = mean(value),
-    median = median(value),
-    mode = hdp(value),
-    lower_quant_90 = quantile(value, 0.05),
-    upper_quant_90 = quantile(value, 0.95),
+    mean = mean(value) * 100,
+    median = median(value) * 100,
+    mode = hdp(value) * 100,
+    quant_05 = quantile(value, 0.05) * 100,
+    quant_95 = quantile(value, 0.95) * 100,
     .groups = "drop"
   ) %>%
   mutate(
-    mean_percent = mean * 100,
-    median_percent = median * 100,
-    mode_percent = mode * 100,
-    lower_percent = lower_quant_90 * 100,
-    upper_percent = upper_quant_90 * 100,
-    label = glue::glue("**{nice_num(median_percent, 0, FALSE)}%** [{nice_num(lower_percent, 1, FALSE)}; {nice_num(upper_percent, 1, FALSE)}]")
+    label = glue::glue("**{nice_num(median, 0, FALSE)}%** [{nice_num(quant_05, 1, FALSE)}; {nice_num(quant_95, 1, FALSE)}]")
   )
 
 # Combine summaries
 freq_sim_combined <- bind_rows(freq_sim_summary, freq_sim_all) %>%
-  mutate(type = factor(type, levels = c("forecaster", "expert", "all")))
+  mutate(type = factor(type, levels = c("forecaster", "expert", "all")),
+        question = factor(question, levels = question_order))
 
-# Create plot for frequentist beta regression predictions
-j_png("frequentist beta regression plot",
-      height = 5)
-freq_sim_combined %>%
-  filter(question != "Military") %>%
-  mutate(question = factor(question, levels = question_order)) %>%
-  ggplot(aes(x = median_percent, y = question, color = type)) +
-  scale_x_continuous(limits = c(0, 152.5), 
-                    breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), 
-                    labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), 
-                    expand = expansion(add = c(1,1))) +
-  scale_y_discrete(limits = rev) +
-  geom_errorbarh(aes(xmin = lower_percent, xmax = upper_percent), 
-                position = position_dodge(.8), height = .25) +
-  geom_point(position = position_dodge(.8)) +
-  geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), 
-           fill = "grey99", color = "grey98", linewidth = .1) +
-  geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), 
-               fill = NA, text.color = "black", color = NA, 
-               position = position_dodge(.8), size = 2.4, family = "Jost", 
-               show.legend = FALSE) +
-  scale_alpha_manual(values = c(1, 1, 1)) +
-  scale_color_manual(values = my_colors) +
-  guides(color = guide_legend(reverse = TRUE)) +
-  labs(
-    x = "",
-    y = "",
-    title = "Frequentist Beta Regression Model Predictions",
-    subtitle = "Predictive distribution without Bayesian priors",
-    color = "Respondent type"
-  ) +
-  theme(
-    legend.position = "top"
-  )
-dev.off()
+# Create a summary plot using the frequentist beta regression
+create_summary_plot(
+  freq_sim_combined,
+  title = "Frequentist beta regression estimates",
+  filename = "summary_frequentist_beta_regression"
+)
