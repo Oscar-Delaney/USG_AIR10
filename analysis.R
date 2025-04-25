@@ -181,7 +181,7 @@ create_summary_plot <- function(data,
     ggplot(aes(x = median, y = question, color = type)) +
     scale_x_continuous(limits = c(0, 152.5), 
                        breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), 
-                       labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), 
+                       labels = c(as.character(seq(0, 100, 20)), "**Estimates**"), 
                        expand = expansion(add = c(1,1))) +
     scale_y_discrete(limits = rev) +
     geom_errorbarh(aes(xmin = quant_05, xmax = quant_95), position = position_dodge(.8), height = .25) +
