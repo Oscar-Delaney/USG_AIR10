@@ -669,67 +669,6 @@ beta_pred_summary %>%
   )
 dev.off()
 
-# Compare with EPRED results (posterior over the mean)
-j_png("beta regression comparison plot",
-      height = 7)
-
-# Combine both datasets for comparison
-comparison_data <- bind_rows(
-  beta_summary_1 %>% 
-    filter(parameter == "probability") %>%
-    mutate(distribution_type = "Posterior distribution of the mean") %>%
-    select(question, type, perc_median, perc_lower_quant_90, perc_upper_quant_90, distribution_type),
-  
-  beta_pred_summary %>%
-    mutate(distribution_type = "Full predictive distribution") %>%
-    select(question, type, perc_median, perc_lower_quant_90, perc_upper_quant_90, distribution_type)
-) %>%
-  filter(question != "Military")
-
-# Add raw data points for comparison
-raw_data_points <- data %>%
-  filter(question != "Military") %>%
-  mutate(
-    perc_median = main,  # Already in percentage format
-    distribution_type = "Raw individual estimates"
-  ) %>%
-  select(question, type, usercode, perc_median, distribution_type)
-
-# Create the comparison plot
-comparison_data %>%
-  ggplot(aes(x = perc_median, y = question, color = type)) +
-  scale_x_continuous(limits = c(0, 100), expand = expansion(add = c(1, 1))) +
-  scale_y_discrete(limits = rev) +
-  # Add raw data points
-  geom_point(data = raw_data_points, 
-             aes(shape = "Individual estimates"), 
-             position = position_jitter(height = 0.2), 
-             alpha = 0.7, size = 2) +
-  # Add intervals for both distribution types
-  geom_errorbarh(aes(xmin = perc_lower_quant_90, xmax = perc_upper_quant_90, 
-                    linetype = distribution_type),
-                position = position_dodge(width = 0.8), height = 0.2) +
-  geom_point(aes(shape = distribution_type), 
-            position = position_dodge(width = 0.8)) +
-  scale_color_manual(values = my_colors) +
-  scale_shape_manual(values = c("Posterior distribution of the mean" = 16, 
-                              "Full predictive distribution" = 17,
-                              "Individual estimates" = 1)) +
-  labs(
-    x = "Estimated probability (%)",
-    y = "",
-    title = "Comparison of different distribution types from beta regression",
-    subtitle = "Showing both the uncertainty in the mean and the full predictive distribution",
-    color = "Respondent type",
-    shape = "Distribution type",
-    linetype = "Distribution type"
-  ) +
-  theme(
-    legend.position = "right"
-  ) +
-  facet_wrap(~ distribution_type, ncol = 1)
-dev.off()
-
 ##### Frequentist Beta Regression Analysis #####
 # This implements a standard frequentist beta regression model
 # without Bayesian priors that might skew the results
