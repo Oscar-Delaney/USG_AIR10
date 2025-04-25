@@ -125,6 +125,125 @@ data %>%
   )
 dev.off()
 
+# Simple aggregation method using arithmetic means
+# This is a simpler alternative to the metalog distribution approach
+
+# Calculate simple aggregate statistics directly from the raw data
+simple_aggregation <- function(data) {
+  # Aggregate by question (across all participant types)
+  all_participants <- data %>%
+    group_by(question) %>%
+    summarize(
+      median = mean(main, na.rm = TRUE),        # Mean of medians
+      quant_05 = mean(low, na.rm = TRUE),       # Mean of lower bounds
+      quant_95 = mean(high, na.rm = TRUE),      # Mean of upper bounds
+      type = "all",
+      .groups = "drop"
+    )
+  
+  # Aggregate by question and participant type
+  by_type <- data %>%
+    group_by(question, type) %>%
+    summarize(
+      median = mean(main, na.rm = TRUE),        # Mean of medians
+      quant_05 = mean(low, na.rm = TRUE),       # Mean of lower bounds
+      quant_95 = mean(high, na.rm = TRUE),      # Mean of upper bounds
+      .groups = "drop"
+    )
+  
+  # Combine the results
+  combined_results <- bind_rows(all_participants, by_type) %>%
+    # Create labels for the plot
+    mutate(label = glue::glue("**{round(median, 1)}%** [{round(quant_05, 1)}; {round(quant_95, 1)}]")) %>%
+    # Ensure type has the desired order
+    mutate(type = factor(type, levels = c("forecaster", "expert", "all")))
+  
+  return(combined_results)
+}
+
+# Apply the function to your data
+simple_agg_results <- simple_aggregation(data)
+
+# Create a similar summary plot using the simple aggregation method
+j_png("simple_aggregation_summary_plot",
+      height = 5)
+
+simple_agg_results %>%
+  filter(question != "Military") %>%  # Remove Military question to match the original plot
+  ggplot(aes(x = median, y = question, color = type)) +
+  scale_x_continuous(limits = c(0, 152.5), 
+                     breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), 
+                     labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), 
+                     expand = expansion(add = c(1,1))) +
+  scale_y_discrete(limits = rev) +
+  geom_errorbarh(aes(xmin = quant_05, xmax = quant_95), position = position_dodge(.8), height = .25) +
+  geom_point(position = position_dodge(.8)) +
+  geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth = .1) +
+  geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), 
+               fill = NA, text.color = "black", color = NA, 
+               position = position_dodge(.8), size = 2.4, 
+               family = "Jost", show.legend = FALSE) +
+  scale_alpha_manual(values = c(1, 1, 1)) +
+  scale_color_manual(values = my_colors) +
+  guides(color = guide_legend(reverse = TRUE)) +
+  labs(
+    x = "",
+    y = "",
+    title = "Simple arithmetic mean aggregation of estimates",
+    subtitle = "Using mean of medians and confidence bounds",
+    color = "Respondent type"
+  ) +
+  theme(
+    legend.position = "top"
+  )
+dev.off()
+
+# Read the Bayesian model data
+bayesian_data <- read_csv("data/bayesian.csv")
+
+# Apply the factor ordering
+bayesian_data <- bayesian_data %>%
+  mutate(question = factor(question, levels = question_order)) %>%
+  mutate(type = factor(type, levels = c("forecaster", "expert", "all")))
+
+# Create labels for the plot
+bayesian_data <- bayesian_data %>%
+  mutate(label = glue::glue("**{round(median*100, 1)}%** [{round(quant_05*100, 1)}; {round(quant_95*100, 1)}]"))
+
+# Create a similar summary plot using the simple aggregation method
+j_png("bayesian_hierarchical_model",
+      height = 5)
+
+bayesian_data %>%
+  filter(question != "Military") %>%  # Remove Military question to match the original plot
+  ggplot(aes(x = median * 100, y = question, color = type)) +
+  scale_x_continuous(limits = c(0, 152.5), 
+                     breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), 
+                     labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), 
+                     expand = expansion(add = c(1,1))) +
+  scale_y_discrete(limits = rev) +
+  geom_errorbarh(aes(xmin = quant_05 * 100, xmax = quant_95 * 100), position = position_dodge(.8), height = .25) +
+  geom_point(position = position_dodge(.8)) +
+  geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth = .1) +
+  geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), 
+               fill = NA, text.color = "black", color = NA, 
+               position = position_dodge(.8), size = 2.4, 
+               family = "Jost", show.legend = FALSE) +
+  scale_alpha_manual(values = c(1, 1, 1)) +
+  scale_color_manual(values = my_colors) +
+  guides(color = guide_legend(reverse = TRUE)) +
+  labs(
+    x = "",
+    y = "",
+    title = "Bayesian Hierarchical Model Estimates",
+    subtitle = "Posterior medians with 90% credible intervals",
+    color = "Respondent type"
+  ) +
+  theme(
+    legend.position = "top"
+  )
+dev.off()
+
 #### metalog it ####
 make_metalog <- function(input_tibble, n_samples = 25000) {
   
@@ -784,7 +903,7 @@ freq_sim_combined %>%
   scale_x_continuous(limits = c(0, 152.5), 
                     breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), 
                     labels = c(as.character(seq(0, 100, 20)), "**Parameter<br>estimates**"), 
-                    expand = expansion(add = 0)) +
+                    expand = expansion(add = c(1,1))) +
   scale_y_discrete(limits = rev) +
   geom_errorbarh(aes(xmin = lower_percent, xmax = upper_percent), 
                 position = position_dodge(.8), height = .25) +
