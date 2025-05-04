@@ -1,12 +1,8 @@
 library(tidyverse)
 library(jimbilben) # devtools::install_github("Jimbilben/jimbilben")
-library(brms)
-library(tidybayes)
 library(glue)
-library(tidystats)
 library(rmetalog)
 library(ggtext)
-library(extraDistr)
 library(betareg)
 
 # set the theme and colors
@@ -95,7 +91,7 @@ data %>%
     title = "Raw estimates for probabilities of each outcome",
     x = "Estimated probability and 90% range",
     y = "",
-    color = "Respondent type"
+    color = "Participant type"
   ) +
   theme(
     legend.position = "top"
@@ -117,7 +113,7 @@ data %>%
     title = "Raw estimates for probabilities of each outcome",
     x = "Estimated probability and 90% range",
     y = "",
-    color = "Respondent type"
+    color = "Participant type"
   ) +
   theme(
     legend.position = "top",
@@ -154,7 +150,7 @@ simple_aggregation <- function(data) {
   # Combine the results
   combined_results <- bind_rows(all_participants, by_type) %>%
     # Create labels for the plot
-    mutate(label = glue::glue("**{round(median, 1)}%** [{round(quant_05, 1)}; {round(quant_95, 1)}]")) %>%
+    mutate(label = glue::glue("**{sprintf('%.1f', median)}%** [{sprintf('%.1f', quant_05)}; {sprintf('%.1f', quant_95)}]")) %>%
     # Ensure type has the desired order
     mutate(type = factor(type, levels = c("forecaster", "expert", "all")))
   
@@ -179,15 +175,13 @@ create_summary_plot <- function(data,
   # Create the plot
   p <- plot_data %>%
     ggplot(aes(x = median, y = question, color = type)) +
-    scale_x_continuous(limits = c(0, 152.5), 
-                       breaks = c(seq(0, 100, 20), mean(c(100, 152.5))), 
-                       labels = c(as.character(seq(0, 100, 20)), "**Estimates**"), 
+    scale_x_continuous(limits = c(0, 100), 
+                       breaks = seq(0, 100, 20), 
                        expand = expansion(add = c(1,1))) +
     scale_y_discrete(limits = rev) +
     geom_errorbarh(aes(xmin = quant_05, xmax = quant_95), position = position_dodge(.8), height = .25) +
     geom_point(position = position_dodge(.8)) +
-    geom_rect(aes(xmin = 100, xmax = 152.5, ymin = -Inf, ymax = Inf), fill = "grey99", color = "grey98", linewidth = .1) +
-    geom_richtext(aes(x = mean(c(100, 152.5)), label = label, alpha = type), 
+    geom_richtext(aes(x = 90, label = label, alpha = type), 
                   fill = NA, text.color = "black", color = NA, 
                   position = position_dodge(.8), size = 2.4, 
                   family = "Jost", show.legend = FALSE) +
@@ -199,7 +193,7 @@ create_summary_plot <- function(data,
       y = "",
       title = title,
       subtitle = subtitle,
-      color = "Respondent type"
+      color = "Participant type"
     ) +
     theme(
       legend.position = "top"
@@ -221,7 +215,7 @@ simple_agg_results <- simple_aggregation(data)
 # Create a summary plot using the simple aggregation method
 create_summary_plot(
   simple_agg_results,
-  title = "Simple arithmetic mean aggregation of estimates",
+  title = "Arithmetic mean of participants' forecasts and CIs",
   filename = "summary_simple_aggregation"
 )
 
@@ -237,13 +231,13 @@ bayesian_data <- bayesian_data %>%
     median = median * 100,
     quant_05 = quant_05 * 100,
     quant_95 = quant_95 * 100,
-    label = glue::glue("**{round(median, 1)}%** [{round(quant_05, 1)}; {round(quant_95, 1)}]")
+    label = glue::glue("**{sprintf('%.1f', median)}%** [{sprintf('%.1f', quant_05)}; {sprintf('%.1f', quant_95)}]")
   )
 
 # Create a summary plot using the Bayesian hierarchical model
 create_summary_plot(
   bayesian_data,
-  title = "Bayesian hierarchical model estimates",
+  title = "Bayesian hierarchical model",
   filename = "summary_bayesian_hierarchical_model"
 )
 
@@ -338,7 +332,7 @@ data_samples %>%
   
   facet_wrap(~question, ncol = 2, scales = "free_y") +
   labs(
-    title = "Pooled probabilities based on metalog distributions for each respondent's estimate",
+    title = "Pooled probabilities based on metalog distributions for each participant's estimate",
     x = "Estimated probability",
     y = ""
   ) +
@@ -371,9 +365,9 @@ data_samples_grouped_summary %>%
   scale_color_manual(values = my_colors) +
   facet_wrap(~question, ncol = 2, scales = "free_y") +
   labs(
-    title = "Pooled probabilities based on metalog distributions for each respondent's estimate",
+    title = "Pooled probabilities based on metalog distributions for each participant's estimate",
     x = "Estimated probability",
-    fill = "Respondent type",
+    fill = "Participant type",
     y = ""
   ) +
   theme(
@@ -385,7 +379,7 @@ dev.off()
 # Create labels (using quantiles)
 metalog_summary_labels_quant <-
   data_samples_combined_summary %>%
-  mutate(label = glue::glue("**{nice_num(median, 0, FALSE)}%** [{nice_num(quant_05, 1, FALSE)}; {nice_num(quant_95, 1, FALSE)}]")) %>%
+  mutate(label = glue::glue("**{sprintf('%.1f', median)}%** [{sprintf('%.1f', quant_05)}; {sprintf('%.1f', quant_95)}]")) %>%
   select(question, type, label)
 
 data_samples_combined_summary_quant <-
@@ -396,7 +390,7 @@ data_samples_combined_summary_quant <-
 # Create a summary plot using the metalog distributions
 create_summary_plot(
   data_samples_combined_summary_quant,
-  title = "Metalog distributions group estimates",
+  title = "Metalog distributions",
   filename = "summary_metalogs"
 )
 
@@ -528,7 +522,7 @@ freq_sim_summary <- freq_simulations %>%
     .groups = "drop"
   ) %>%
   mutate(
-    label = glue::glue("**{nice_num(median, 0, FALSE)}%** [{nice_num(quant_05, 1, FALSE)}; {nice_num(quant_95, 1, FALSE)}]")
+    label = glue::glue("**{sprintf('%.1f', median)}%** [{sprintf('%.1f', quant_05)}; {sprintf('%.1f', quant_95)}]")
   )
 
 # Add "all" category by combining samples from both types
@@ -544,7 +538,7 @@ freq_sim_all <- freq_simulations %>%
     .groups = "drop"
   ) %>%
   mutate(
-    label = glue::glue("**{nice_num(median, 0, FALSE)}%** [{nice_num(quant_05, 1, FALSE)}; {nice_num(quant_95, 1, FALSE)}]")
+    label = glue::glue("**{sprintf('%.1f', median)}%** [{sprintf('%.1f', quant_05)}; {sprintf('%.1f', quant_95)}]")
   )
 
 # Combine summaries
@@ -555,6 +549,6 @@ freq_sim_combined <- bind_rows(freq_sim_summary, freq_sim_all) %>%
 # Create a summary plot using the frequentist beta regression
 create_summary_plot(
   freq_sim_combined,
-  title = "Frequentist beta regression estimates",
+  title = "Beta regression",
   filename = "summary_frequentist_beta_regression"
 )
